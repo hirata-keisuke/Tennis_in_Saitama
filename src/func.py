@@ -6,14 +6,53 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from time import sleep
 
+def go_to_top_page(browser, url="https://www.pa-reserve.jp/eap-rj/rsv_rj/core_i/init.asp?KLCD=119999&SBT=1&Target=_Top&LCD="):
+    """
+    埼玉県県営公園の施設予約サイトに遷移する
+
+    Parameters
+    ==========
+    brawser : selenium.webdriver.chrome.webdriver.WebDriver
+        seleniumで起動したChromeのブラウザドライバ
+
+    url : str
+        遷移先のURL
+    """
+    # 指定したURLに遷移させる
+    browser.get(url=url)
+
+    # サイトがframeタグで囲まれているので、frameに移動する
+    frame = browser.find_element(by=By.TAG_NAME, value="frame")
+    browser.switch_to.frame(frame)
+
+def login(browser, id="", pwd=""):
+    """
+    一度、マイメニューに入ってログインする。後で抽選予約するときに、1回目の予約だけログイン情報を聞かれるのを避ける。
+
+    Parameters
+    ==========
+    brawser : selenium.webdriver.chrome.webdriver.WebDriver
+        seleniumで起動したChromeのブラウザドライバ
+
+    id : str
+        利用者ID
+    
+    pwd : str
+        利用者パスワード
+    """
+
 
 if __name__ == "__main__":
 
     try:
-        browser = webdriver.Chrome()
-        browser.get("https://www.pa-reserve.jp/eap-rj/rsv_rj/core_i/init.asp?KLCD=119999&SBT=1&Target=_Top&LCD=")
-        #sleep(1)
 
+        # 指定したURLに遷移させる
+        browser = webdriver.Chrome()
+        browser.get(url="https://www.pa-reserve.jp/eap-rj/rsv_rj/core_i/init.asp?KLCD=119999&SBT=1&Target=_Top&LCD=")
+
+        # サイトがframeタグで囲まれているので、frameに移動する
+        frame = browser.find_element(by=By.TAG_NAME, value="frame")
+        browser.switch_to.frame(frame)
         # frameの切り替え
         frame = browser.find_element(by=By.TAG_NAME, value="frame")
         browser.switch_to.frame(frame)
