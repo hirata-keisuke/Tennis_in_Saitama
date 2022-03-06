@@ -64,7 +64,7 @@ def login(browser, id="", pwd=""):
     button = browser.find_element(by=By.XPATH, value="//input[@alt='メニューへ戻る']")
     button.click()
 
-def get_other_competitors(browser, test):
+def get_other_competitors(browser):
     """
     大宮第二公園の施設抽選・予約ページに遷移して、抽選を既に申請している人数を、日ごと・コートごと・時間帯ごとで取り出す。
 
@@ -98,17 +98,6 @@ def get_other_competitors(browser, test):
     browser.execute_script(
         f"javascript:set_cal_cal({next_month.strftime('%Y%m%d')}, '00000000', '99999999')"
     )
-
-    if test:
-        return {
-        '20220430': {'16': {'9-11': 99999, '11-13': 99999, '13-15': 99999, '15-17': 99999},
-        '17': {'9-11': 10, '11-13': 8, '13-15': 8, '15-17': 7},
-        '18': {'9-11': 26, '11-13': 7, '13-15': 6, '15-17': 6},
-        '19': {'9-11': 26, '11-13': 12, '13-15': 17, '15-17': 17},
-        '20': {'9-11': 27, '11-13': 9, '13-15': 10, '15-17': 8},
-        '21': {'9-11': 28, '11-13': 22, '13-15': 8, '15-17': 16},
-        '22': {'9-11': 22, '11-13': 16, '13-15': 19, '15-17': 3}}
-    }
 
     # 既に申し込んでいる人数の表示ON
     browser.find_element(by=By.ID, value="radio01").click()
@@ -197,5 +186,38 @@ def enter_drawing(browser, competitors, topn=4):
         Alert(browser).accept()
 
         # コート表示画面まで戻る
+        print(f"{target[0]}の{target[1]}番コートを{target[2]}で抽選予約しました。")
         button = browser.find_element(by=By.NAME, value="btn_back")
         button.click()
+
+def reflect_hope(competitors, hopes):
+    """
+    日付・コート・時間帯の希望にないコート申請者を99999に増やして、ヒットしないようにする。
+
+    Parameters
+    ==========
+    competitors : dict (of dict (of dict))
+        日ごと・コートごと・時間帯ごとの申請者をまとめた辞書
+
+    hopes : dict (of dict (of list))
+        日付と時間帯の希望
+
+    Returns
+    =======
+    competitors : dict (of dict (of dict))
+        希望をしたコートだけ正常値になっている辞書
+
+    """
+
+    conditions = list()
+    for date in hopes.keys():
+        for court in hopes[date].keys():
+            for tz in hopes[date][court]:
+                conditions.append(date + court + tz)
+    for k1 in competitors.keys():
+        for k2 in competitors[k1].keys():
+            for k3 in competitors[k1][k2].keys():
+                if k1 + k2 + k3 not in conditions:
+                    competitors[k1][k2][k3] = 99999
+
+    return competitors
