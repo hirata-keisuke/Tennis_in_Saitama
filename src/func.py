@@ -1,9 +1,10 @@
 import datetime as dt
 import jpholiday, calendar
 import re, unicodedata
+import numpy as np
 
-from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.alert import Alert
 from dateutil.relativedelta import relativedelta
 from time import sleep
 
@@ -63,7 +64,7 @@ def login(browser, id="", pwd=""):
     button = browser.find_element(by=By.XPATH, value="//input[@alt='メニューへ戻る']")
     button.click()
 
-def get_other_competitors(browser):
+def get_other_competitors(browser, test):
     """
     大宮第二公園の施設抽選・予約ページに遷移して、抽選を既に申請している人数を、日ごと・コートごと・時間帯ごとで取り出す。
 
@@ -98,6 +99,17 @@ def get_other_competitors(browser):
         f"javascript:set_cal_cal({next_month.strftime('%Y%m%d')}, '00000000', '99999999')"
     )
 
+    if test:
+        return {
+        '20220430': {'16': {'9-11': 99999, '11-13': 99999, '13-15': 99999, '15-17': 99999},
+        '17': {'9-11': 10, '11-13': 8, '13-15': 8, '15-17': 7},
+        '18': {'9-11': 26, '11-13': 7, '13-15': 6, '15-17': 6},
+        '19': {'9-11': 26, '11-13': 12, '13-15': 17, '15-17': 17},
+        '20': {'9-11': 27, '11-13': 9, '13-15': 10, '15-17': 8},
+        '21': {'9-11': 28, '11-13': 22, '13-15': 8, '15-17': 16},
+        '22': {'9-11': 22, '11-13': 16, '13-15': 19, '15-17': 3}}
+    }
+
     # 既に申し込んでいる人数の表示ON
     browser.find_element(by=By.ID, value="radio01").click()
 
@@ -108,98 +120,82 @@ def get_other_competitors(browser):
         if date.weekday() >= 5 or jpholiday.is_holiday(date):
             holidays.append(date)
         
-    print(holidays)
+    # 時間帯
+    time_span = ["8", "9-11", "11-13", "13-15", "15-17"]
 
-if __name__ == "__main__":
+    # 後で使う正規表現
+    pickup_courtno = re.compile(r"\s+第\dテニス")
+    pickup_braket = re.compile(r"【 (\d+) 】")
 
-    try:
+    # 抽選コートに申し込んでいる人数を取り出す
+    competitors = dict()
+    for date in holidays:
+        date_str = date.strftime("%Y%m%d")
+        competitors[date_str] = dict()
 
-        # 指定したURLに遷移させる
-        browser = webdriver.Chrome()
-        browser.get(url="https://www.pa-reserve.jp/eap-rj/rsv_rj/core_i/init.asp?KLCD=119999&SBT=1&Target=_Top&LCD=")
+        # 土日祝日を切り替える
+        browser.execute_script(f"javascript:set_data({date_str})")
+        # 第1コート~第22コートまでを調べる
+        shisetu_title = browser.find_elements(by=By.CLASS_NAME, value="clsShisetuTitleOneDay")
+        for one_court in shisetu_title:
+            if "テニス" in one_court.text:
+                courtno = pickup_courtno.sub("", unicodedata.normalize("NFKC", one_court.text))
+                competitors[date_str][courtno] = dict()
+                # 時間帯で調べる
+                for i, one_timezone in enumerate(one_court.find_elements(by=By.XPATH, value="../td")):
+                    if i != 0:
+                        if num := pickup_braket.search(one_timezone.text):
+                            competitors[date_str][courtno][time_span[i]] = int(num[1])
+                        else:
+                            competitors[date_str][courtno][time_span[i]] = 99999
+    return competitors
 
-        # サイトがframeタグで囲まれているので、frameに移動する
-        frame = browser.find_element(by=By.TAG_NAME, value="frame")
-        browser.switch_to.frame(frame)
-        # frameの切り替え
-        frame = browser.find_element(by=By.TAG_NAME, value="frame")
-        browser.switch_to.frame(frame)
+def enter_drawing(browser, competitors, topn=4):
+    """
+    申込数が少ない、日にち・時間帯・コート番号に抽選を申し込む。
+    
+    Parameters
+    ==========
+    competitors : dict (of dict (of dict))
+        日ごと・コートごと・時間帯ごとの申請者をまとめた辞書
 
-        # 所在地ボタンを押してページ遷移
-        button = browser.find_element(by=By.XPATH, value="//input[@alt='所在地']")
+    topn : int
+        少ない順から幾つを取り出すか
+    """
+    
+    data = list()
+    index = list()
+    for k1, v1 in competitors.items():
+        for k2, v2 in v1.items():
+            for k3, v3 in v2.items():
+                data.append(v3)
+                index.append(k1 + "/" + k2 + "/" + k3)
+
+    # 申請者の少ないコートを選ぶ
+    targets = np.take(index, np.argsort(data)[:topn])
+    timezones = {"9-11":0, "11-13":1, "13-15":2, "15-17":3}
+
+    for target in targets:
+        target = target.split("/")
+        # 日付を合わせる
+        browser.execute_script(f"javascript:set_data({target[0]})")
+        tz = timezones[target[2]]
+        # コートを選ぶ
+        browser.execute_script(f"javascript:komaClicked(0,{tz},{int(target[1])+1})")
+        # OK
+        button = browser.find_element(by=By.NAME, value="btn_ok")
         button.click()
-        #sleep(1)
+        # 次へ、次へ、抽選予約確定
+        button = browser.find_element(by=By.NAME, value="btn_next")
+        button.click()
+        button = browser.find_element(by=By.NAME, value="btn_next")
+        button.click()
+        button = browser.find_element(by=By.NAME, value="btn_cmd")
+        button.click()
+        # ポップアップが表示されるまで待つ
+        sleep(2)
+        Alert(browser).accept()
 
-        # 地域のテーブル取得
-        tables = browser.find_elements(by=By.TAG_NAME, value="table")
-        center_area_button = tables[7].find_elements(by=By.TAG_NAME, value="td")[2].find_element(by=By.TAG_NAME, value="a")
-        center_area_button.click()
-
-        # 地域検索開始
-        tables[3].find_element(by=By.XPATH, value="//input[@alt='検索実行']").click()
-        
-        # 大宮第二公園の抽選予約画面へ
-        to_lottery = browser.find_elements(by=By.CLASS_NAME, value="clsImage")
-        to_lottery[-1].click()
-        
-        # 抽選したい、翌月のカレンダーに切り替える
-        _today = dt.date.today()
-        this_month = _today.month
-        next_month = (this_month+1)%13
-        next_month_element = browser.find_elements(by=By.CLASS_NAME, value="clsCalMonth")[next_month-1]
-        next_month_link = next_month_element.find_element(by=By.TAG_NAME, value="a")
-        next_month_url = next_month_link.get_attribute("href")
-        browser.execute_script(next_month_url)
-
-        # 既に申し込んでいる人数の表示ON
-        browser.find_element(by=By.ID, value="radio01").click()
-        sleep(3)
-
-        # 土日祝日を抽選申し込み対象にする
-        holidays = list()
-        _year = _today.year + (_today.month+1)//13
-        for d in range(1, 31):
-            try:
-                date = dt.date(_year, next_month, d)
-                # 土日祝日
-                if date.weekday() >= 5 or jpholiday.is_holiday(date):
-                    holidays.append(date)
-            
-            except ValueError:
-                break
-        
-        # 時間帯
-        time_span = ["8", "9-11", "11-13", "13-15", "15-17"]
-
-        # 後で使う正規表現
-        pickup_courtno = re.compile(r"\s+第\dテニス")
-        pickup_braket = re.compile(r"【 (\d+) 】")
-
-        # 抽選コートに申し込んでいる人数を取り出す
-        lottery_people = dict()
-        for date in holidays:
-            date_str = date.strftime("%Y%m%d")
-            lottery_people[date_str] = dict()
-
-            # 土日祝日で表示
-            browser.execute_script(
-                "javascript:set_data(" + date_str + ")"
-            )
-            sleep(1)
-            # 第1コート~第22コートまでを調べる
-            shisetu_title = browser.find_elements(by=By.CLASS_NAME, value="clsShisetuTitleOneDay")
-            for one_court in shisetu_title:
-                if "テニス" in one_court.text:
-                    courtno = pickup_courtno.sub("", unicodedata.normalize("NFKC", one_court.text))
-                    lottery_people[date_str][courtno] = dict()
-                    # 時間帯で調べる
-                    for i, one_timezone in enumerate(one_court.find_elements(by=By.XPATH, value="../td")):
-                        if i != 0:
-                            if num := pickup_braket.search(one_timezone.text):
-                                lottery_people[date_str][courtno][time_span[i]] = num[1]
-                            else:
-                                lottery_people[date_str][courtno][time_span[i]] = ""
-
-    finally:
-        print(lottery_people)
-        browser.close()
+        # コート表示画面まで戻る
+        button = browser.find_element(by=By.NAME, value="btn_back")
+        button.click()

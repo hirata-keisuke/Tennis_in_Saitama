@@ -10,8 +10,10 @@ if __name__ == "__main__":
 
     func.login(browser=browser, id="070805keih", pwd="0785")
 
+    competitors = func.get_other_competitors(browser=browser, test=True)
+
     try:
-        func.get_other_competitors(browser=browser)
-        sleep(3)
+        func.enter_drawing(browser=browser, competitors=competitors)
+        
     finally:
         browser.close()
