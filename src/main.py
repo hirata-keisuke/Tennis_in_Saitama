@@ -10,16 +10,21 @@ if __name__ == "__main__":
 
     func.go_to_top(browser=browser)
 
-    func.login(browser=browser, id="070805keih", pwd="0785")
+    # 自分のIDとパスワードが必要
+    func.login(browser=browser, id="", pwd="")
 
     competitors = func.get_other_competitors(browser=browser)
   
+    # 自分の希望を作る
     hopes = dict()
+    # 日付
     for i in ["20220402", "20220409", "20220416", "20220423", "20220429", "20220430"]:
         hopes[i] = dict()
+        # コート番号
         for j in range(1, 23):
             j = str(j)
             hopes[i][j] = list()
+            # 時間帯
             for k in ["9-11", "11-13", "13-15", "15-17"]:
                 hopes[i][j].append(k)
     
